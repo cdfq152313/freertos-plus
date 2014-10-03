@@ -14,5 +14,8 @@ __attribute__((constructor)) void fs_init();
 
 int register_fs(const char * mountpoint, fs_open_t callback, void * opaque);
 int fs_open(const char * path, int flags, int mode);
+int fs_list(const char * path, char* output);
+
+
 
 #endif

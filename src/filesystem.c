@@ -10,6 +10,7 @@
 
 struct fs_t {
     uint32_t hash;
+    const char * name;
     fs_open_t cb;
     void * opaque;
 };
@@ -27,12 +28,40 @@ int register_fs(const char * mountpoint, fs_open_t callback, void * opaque) {
     for (i = 0; i < MAX_FS; i++) {
         if (!fss[i].cb) {
             fss[i].hash = hash_djb2((const uint8_t *) mountpoint, -1);
+            fss[i].name = mountpoint;
             fss[i].cb = callback;
             fss[i].opaque = opaque;
             return 0;
         }
     }
     
+    return -1;
+}
+
+void fs_list_root(char * output){
+    int i;
+    
+    output[0] = '\0';
+    for(i = 0; i < MAX_FS; ++i){
+        if(fss[i].cb){
+            strcat(output, fss[i].name);
+            strcat(output, "\n");
+        }
+    }
+}
+
+int fs_list(const char * path, char * output){
+
+    //if only ///// list root
+    while(path[0] == '/')
+        path++;
+    if(path[0] == '\0'){
+        fs_list_root(output);
+        return 0;
+    }
+
+    //else list mountpoint
+
     return -1;
 }
 
