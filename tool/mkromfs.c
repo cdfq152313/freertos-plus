@@ -9,14 +9,17 @@
 #include <string.h>
 
 #define hash_init 5381
+#define FILE_NAME_LENGTH 51
 #define MAX_FILE_COUNT 500
+#define FILE_BLOCK_SIZE 1024
 #define TRUE 1
-#define FALSSE 0
+#define FALSE 0
 
 struct _Index{
     uint32_t hash;
     uint8_t is_directory;
-    char name[51];
+    char name[FILE_NAME_LENGTH];
+    char fullpath[1024];
     uint32_t size;
     uint32_t address;
     uint32_t scope;
@@ -52,7 +55,8 @@ void processdir(DIR * dirp, const char * curpath, const char * prefix, uint32_t 
     FILE * infile;
 
     //if this is a dirctory, it has child nodes.
-    child_scope = scope_count ++;
+    child_scope = ++ scope_count ;
+    filetable[cur_index].child_scope = child_scope;
     
     //traversal all child. when end of traversal, record the directory size.
     while ((ent = readdir(dirp))) {
@@ -66,7 +70,6 @@ void processdir(DIR * dirp, const char * curpath, const char * prefix, uint32_t 
         dir_size ++;
         file_count ++;
         filetable[file_count].hash = hash_djb2((const uint8_t *) ent->d_name, cur_hash);
-        filetable[file_count].is_directory = TRUE;
         strcpy( filetable[file_count].name, ent->d_name); 
         filetable[file_count].scope = child_scope ;
 
@@ -82,11 +85,14 @@ void processdir(DIR * dirp, const char * curpath, const char * prefix, uint32_t 
     #else
         if (ent->d_type == DT_DIR) {
     #endif
+            filetable[file_count].is_directory = TRUE;
             strcat(fullpath, "/");
             rec_dirp = opendir(fullpath);
             processdir(rec_dirp, fullpath + strlen(prefix) + 1, prefix, child_scope, file_count);
             closedir(rec_dirp);
         } else {
+            filetable[file_count].is_directory = FALSE;
+            strcpy( filetable[file_count].fullpath , fullpath);
             infile = fopen(fullpath, "rb");
             if (!infile) {
                 perror("opening input file");
@@ -101,19 +107,117 @@ void processdir(DIR * dirp, const char * curpath, const char * prefix, uint32_t 
 
 }
 
+int cmp(const void * a, const void * b){
+    return ( ((Index*)a)->scope - ((Index*)b)->scope ) ;
+}
+
+void calculate_address_dir(uint32_t cur){
+    uint32_t i;
+    for(i = cur+1; i < file_count; ++i){
+        if(filetable[cur].child_scope == filetable[i].scope ){
+            filetable[cur].address = i;
+            return ;
+        }
+    }
+}
+
+void calculate_address_file(uint32_t cur, uint32_t * file_block_count){
+    filetable[cur].address = *file_block_count;
+    (*file_block_count) += ((filetable[cur].size / FILE_BLOCK_SIZE) + 1);
+}
+
+void calculate_address(){
+    uint32_t cur;
+    uint32_t file_block_count = 0;
+    for(cur = 0; cur < file_count; ++cur){
+        if(filetable[cur].is_directory){
+            calculate_address_dir(cur);
+        }
+        else{
+            calculate_address_file(cur, &file_block_count);
+        }
+    }
+}
 
 void print_filetable(){
-    printf("\nnow print filetable");
+    printf("\nnow print filetable\n");
     int i, j;
-    for(i = 0; i <= file_count; ++i){
+    for(i = 0; i < file_count; ++i){
         for(j = 0; j < filetable[i].scope; ++j)
             printf("  ");
-        printf("%u %s",filetable[i].scope ,filetable[i].name );
+        printf("%u %s, address(%u)",filetable[i].scope , filetable[i].name, filetable[i].address );
         if(filetable[i].is_directory)
-            printf("%u", filetable[i].child_scope);
+            printf(", child(%u)", filetable[i].child_scope);
         printf("\n");
     }
     printf("\n");
+}
+
+void write_output(FILE * outfile){
+    uint8_t i, j;
+    uint8_t b;
+    uint32_t size, w;
+    FILE * infile;
+    char buf[FILE_BLOCK_SIZE];
+    
+    //file index count
+    b = (file_count >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (file_count >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (file_count >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (file_count >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+    
+    //root size
+    b = (filetable[0].size >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (filetable[0].size >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (filetable[0].size >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+    b = (filetable[0].size >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+    
+    //file index
+    for(i = 1; i < file_count; ++i){
+        //hash value
+        b = (filetable[i].hash >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].hash >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].hash >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].hash >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+        //is dir?
+        b = filetable[i].is_directory; fwrite(&b, 1, 1, outfile);
+        //filename
+        for(j = 0 ; j < FILE_NAME_LENGTH; j++)
+            b = * (filetable[i].name + j); fwrite(&b, 1 ,1, outfile);
+        //datasize
+        b = (filetable[i].size >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].size >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].size >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].size >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+
+        //data address
+        b = (filetable[i].address >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].address >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].address >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].address >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+    }
+
+    
+    //file content
+    for(i = 1; i < file_count; ++i){
+        if(!filetable[i].is_directory){
+            infile = fopen(filetable[i].fullpath, "rb");
+            if (!infile) {
+                perror("opening input file");
+                exit(-1);
+            }
+
+            size = filetable[i].size;
+            while (size) {
+                w = size > FILE_BLOCK_SIZE ? FILE_BLOCK_SIZE : size;
+                fread(buf, 1, w, infile);
+                fwrite(buf, 1, FILE_BLOCK_SIZE, outfile) ;
+                size -= w;
+            }
+            fclose(infile);
+       }
+    }
+    
 }
 
 int main(int argc, char ** argv) {
@@ -165,10 +269,18 @@ int main(int argc, char ** argv) {
     filetable[0].is_directory = TRUE;
     strcpy( filetable[0].name, "/" );
     filetable[0].scope = scope_count;
+    //recu
     processdir(dirp, "", dirname, scope_count, file_count);
+    file_count ++ ; //add root
+    //sort
+    qsort(filetable, file_count, sizeof(Index), cmp);
+    //calculate address
+    calculate_address();
+    //write to output
+    write_output(outfile);
+    fwrite(&z, 1, 8, outfile);
 
-    //fwrite(&z, 1, 8, outfile);
-    print_filetable();
+    //print_filetable();
     if (outname)
         fclose(outfile);
     closedir(dirp);
