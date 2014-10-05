@@ -9,6 +9,21 @@
 #include <string.h>
 
 #define hash_init 5381
+#define MAX_FILE_COUNT 500
+#define TRUE 1
+#define FALSSE 0
+
+struct _Index{
+    uint32_t hash;
+    uint8_t is_directory;
+    char name[51];
+    uint32_t size;
+    uint32_t address;
+    uint32_t scope;
+    uint32_t child_scope;
+};
+typedef struct _Index Index;
+Index filetable[MAX_FILE_COUNT];
 
 uint32_t hash_djb2(const uint8_t * str, uint32_t hash) {
     int c;
@@ -24,61 +39,81 @@ void usage(const char * binname) {
     exit(-1);
 }
 
-void processdir(DIR * dirp, const char * curpath, FILE * outfile, const char * prefix) {
+static uint32_t file_count = 0;
+static uint32_t scope_count = 0;
+void processdir(DIR * dirp, const char * curpath, const char * prefix, uint32_t cur_scope, uint32_t cur_index) {
+
     char fullpath[1024];
-    char buf[16 * 1024];
     struct dirent * ent;
     DIR * rec_dirp;
     uint32_t cur_hash = hash_djb2((const uint8_t *) curpath, hash_init);
-    uint32_t size, w, hash;
-    uint8_t b;
+    uint32_t child_scope;
+    uint32_t dir_size = 0;
     FILE * infile;
 
+    //if this is a dirctory, it has child nodes.
+    child_scope = scope_count ++;
+    
+    //traversal all child. when end of traversal, record the directory size.
     while ((ent = readdir(dirp))) {
+        //if . and .. return
+        if (strcmp(ent->d_name, ".") == 0)
+            continue;
+        if (strcmp(ent->d_name, "..") == 0)
+            continue;
+        
+        //record some information
+        dir_size ++;
+        file_count ++;
+        filetable[file_count].hash = hash_djb2((const uint8_t *) ent->d_name, cur_hash);
+        filetable[file_count].is_directory = TRUE;
+        strcpy( filetable[file_count].name, ent->d_name); 
+        filetable[file_count].scope = child_scope ;
+
+        //if this file is directory, recursive
+        //else record the data size
         strcpy(fullpath, prefix);
         strcat(fullpath, "/");
         strcat(fullpath, curpath);
         strcat(fullpath, ent->d_name);
+
     #ifdef _WIN32
         if (GetFileAttributes(fullpath) & FILE_ATTRIBUTE_DIRECTORY) {
     #else
         if (ent->d_type == DT_DIR) {
     #endif
-            if (strcmp(ent->d_name, ".") == 0)
-                continue;
-            if (strcmp(ent->d_name, "..") == 0)
-                continue;
             strcat(fullpath, "/");
             rec_dirp = opendir(fullpath);
-            processdir(rec_dirp, fullpath + strlen(prefix) + 1, outfile, prefix);
+            processdir(rec_dirp, fullpath + strlen(prefix) + 1, prefix, child_scope, file_count);
             closedir(rec_dirp);
         } else {
-            hash = hash_djb2((const uint8_t *) ent->d_name, cur_hash);
             infile = fopen(fullpath, "rb");
             if (!infile) {
                 perror("opening input file");
                 exit(-1);
             }
-            b = (hash >>  0) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (hash >>  8) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (hash >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (hash >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
             fseek(infile, 0, SEEK_END);
-            size = ftell(infile);
-            fseek(infile, 0, SEEK_SET);
-            b = (size >>  0) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (size >>  8) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (size >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
-            b = (size >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
-            while (size) {
-                w = size > 16 * 1024 ? 16 * 1024 : size;
-                fread(buf, 1, w, infile);
-                fwrite(buf, 1, w, outfile);
-                size -= w;
-            }
+            filetable[file_count].size = ftell(infile);
             fclose(infile);
         }
     }
+    filetable[cur_index].size = dir_size;
+
+}
+
+
+void print_filetable(){
+    printf("\nnow print filetable");
+    int i, j;
+    for(i = 0; i <= file_count; ++i){
+        for(j = 0; j < filetable[i].scope; ++j)
+            printf("  ");
+        printf("%u %s",filetable[i].scope ,filetable[i].name );
+        if(filetable[i].is_directory)
+            printf("%u", filetable[i].child_scope);
+        printf("\n");
+    }
+    printf("\n");
 }
 
 int main(int argc, char ** argv) {
@@ -124,8 +159,16 @@ int main(int argc, char ** argv) {
         exit(-1);
     }
 
-    processdir(dirp, "", outfile, dirname);
-    fwrite(&z, 1, 8, outfile);
+    //init
+    file_count = 0;
+    scope_count = 0;
+    filetable[0].is_directory = TRUE;
+    strcpy( filetable[0].name, "/" );
+    filetable[0].scope = scope_count;
+    processdir(dirp, "", dirname, scope_count, file_count);
+
+    //fwrite(&z, 1, 8, outfile);
+    print_filetable();
     if (outname)
         fclose(outfile);
     closedir(dirp);
