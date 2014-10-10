@@ -12,6 +12,7 @@ struct fs_t {
     uint32_t hash;
     const char * mountpoint;
     fs_open_t cb;
+    fs_list_t list;
     void * opaque;
 };
 
@@ -21,7 +22,7 @@ __attribute__((constructor)) void fs_init() {
     memset(fss, 0, sizeof(fss));
 }
 
-int register_fs(const char * mountpoint, fs_open_t callback, void * opaque) {
+int register_fs(const char * mountpoint, fs_open_t callback, fs_list_t list, void * opaque) {
     int i;
     DBGOUT("register_fs(\"%s\", %p, %p)\r\n", mountpoint, callback, opaque);
     
@@ -30,6 +31,7 @@ int register_fs(const char * mountpoint, fs_open_t callback, void * opaque) {
             fss[i].hash = hash_djb2((const uint8_t *) mountpoint, 0, -1);
             fss[i].mountpoint = mountpoint;
             fss[i].cb = callback;
+            fss[i].list = list;
             fss[i].opaque = opaque;
             return 0;
         }
@@ -51,19 +53,39 @@ int fs_list_root(char * output){
     return 0;
 }
 
-int fs_list(const char * path, char * output){
+int fs_list_mountpoint(const char * path, char * output){
+    const char * slash;
+    uint32_t hash;
+    int i;
 
+    slash = strchr(path, '/');
+
+    if(slash)
+        hash = hash_djb2((const uint8_t*) path, 0, slash - path);
+    else
+        hash = hash_djb2((const uint8_t*) path, 0, -1);
+
+    for(i = 0; i < MAX_FS; i++){
+        if(fss[i].hash == hash){
+            fss[i].list(fss[i].opaque, path, output);
+        }
+    }
+    return -1;
+}
+
+int fs_list(const char * path, char * output){
+    
     //if only ///// list root
     while(path[0] == '/')
         path++;
     if(path[0] == '\0'){
-        fs_list_root(output);
-        return 0;
+        return fs_list_root(output);
     }
 
     //else list mountpoint
-
-    return -1;
+    else{
+        return fs_list_mountpoint(path, output);
+    }
 }
 
 int fs_open(const char * path, int flags, int mode) {

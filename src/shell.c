@@ -61,18 +61,22 @@ int parse_command(char *str, char *argv[]){
 
 void ls_command(int n, char *argv[]){
     char buf[1024];
+    int fail;
 
+    //get output
     fio_printf(1, "\r\n");
-    if(n == 1){
-        fs_list("/", buf);
+    if(n == 1)
+        fail = fs_list("/", buf);
+    else if(n == 2)
+        fail = fs_list(argv[1], buf);
+    else
+        fio_printf(1, "input error\r\n");
+
+    //print
+    if(!fail)
         fio_printf(1, "%s\r\n", buf);
-    }
-    else if(n == 2){
-        fio_printf(1, "to be continued...");
-    }
-    else{
-        fio_printf(1, "error\r\n");
-    }
+    else
+        fio_printf(1, "no such directory\r\n");
 }
 
 int filedump(const char *filename){
