@@ -3,6 +3,6 @@
 
 #include <unistd.h>
 
-uint32_t hash_djb2(const uint8_t * str, ssize_t max);
+uint32_t hash_djb2(const uint8_t * str,uint32_t hash,ssize_t max);
 
 #endif

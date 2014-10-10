@@ -202,7 +202,7 @@ void fio_set_opaque(int fd, void * opaque) {
 #define stderr_hash 0x7FA058A3
 
 static int devfs_open(void * opaque, const char * path, int flags, int mode) {
-    uint32_t h = hash_djb2((const uint8_t *) path, -1);
+    uint32_t h = hash_djb2((const uint8_t *) path, 0,-1);
 //    DBGOUT("devfs_open(%p, \"%s\", %i, %i)\r\n", opaque, path, flags, mode);
     switch (h) {
     case stdin_hash:

@@ -81,7 +81,7 @@ const uint8_t * romfs_get_file_by_hash(const uint8_t * romfs, uint32_t h, uint32
 }
 
 static int romfs_open(void * opaque, const char * path, int flags, int mode) {
-    uint32_t h = hash_djb2((const uint8_t *) path, -1);
+    uint32_t h = hash_djb2((const uint8_t *) path, 0, -1);
     const uint8_t * romfs = (const uint8_t *) opaque;
     const uint8_t * file;
     int r = -1;
@@ -98,6 +98,7 @@ static int romfs_open(void * opaque, const char * path, int flags, int mode) {
     }
     return r;
 }
+
 
 void register_romfs(const char * mountpoint, const uint8_t * romfs) {
 //    DBGOUT("Registering romfs `%s' @ %p\r\n", mountpoint, romfs);
