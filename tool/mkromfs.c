@@ -21,7 +21,7 @@ struct _Index{
     char name[FILE_NAME_LENGTH];
     char fullpath[1024];
     uint32_t size;
-    uint32_t address;
+    uint32_t block_index;
     uint32_t scope;
     uint32_t child_scope;
 };
@@ -111,30 +111,30 @@ int cmp(const void * a, const void * b){
     return ( ((Index*)a)->scope - ((Index*)b)->scope ) ;
 }
 
-void calculate_address_dir(uint32_t cur){
+void calculate_block_dir(uint32_t cur){
     uint32_t i;
     for(i = cur+1; i < file_count; ++i){
         if(filetable[cur].child_scope == filetable[i].scope ){
-            filetable[cur].address = i;
+            filetable[cur].block_index = i-1;
             return ;
         }
     }
 }
 
-void calculate_address_file(uint32_t cur, uint32_t * file_block_count){
-    filetable[cur].address = *file_block_count;
+void calculate_block_file(uint32_t cur, uint32_t * file_block_count){
+    filetable[cur].block_index = *file_block_count;
     (*file_block_count) += ((filetable[cur].size / FILE_BLOCK_SIZE) + 1);
 }
 
-void calculate_address(){
+void calculate_block(){
     uint32_t cur;
     uint32_t file_block_count = 0;
     for(cur = 0; cur < file_count; ++cur){
         if(filetable[cur].is_directory){
-            calculate_address_dir(cur);
+            calculate_block_dir(cur);
         }
         else{
-            calculate_address_file(cur, &file_block_count);
+            calculate_block_file(cur, &file_block_count);
         }
     }
 }
@@ -145,7 +145,7 @@ void print_filetable(){
     for(i = 0; i < file_count; ++i){
         for(j = 0; j < filetable[i].scope; ++j)
             printf("  ");
-        printf("%u %s, address(%u)",filetable[i].scope , filetable[i].name, filetable[i].address );
+        printf("%u %s, block index(%u)",filetable[i].scope , filetable[i].name, filetable[i].block_index );
         if(filetable[i].is_directory)
             printf(", child(%u)", filetable[i].child_scope);
         printf("\n");
@@ -183,18 +183,18 @@ void write_output(FILE * outfile){
         b = filetable[i].is_directory; fwrite(&b, 1, 1, outfile);
         //filename
         for(j = 0 ; j < FILE_NAME_LENGTH; j++)
-            b = * (filetable[i].name + j); fwrite(&b, 1 ,1, outfile);
+            fwrite(filetable[i].name+j, 1 ,1, outfile);
         //datasize
         b = (filetable[i].size >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
         b = (filetable[i].size >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
         b = (filetable[i].size >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
         b = (filetable[i].size >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
 
-        //data address
-        b = (filetable[i].address >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
-        b = (filetable[i].address >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
-        b = (filetable[i].address >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
-        b = (filetable[i].address >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+        //data block_index
+        b = (filetable[i].block_index >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].block_index >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].block_index >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+        b = (filetable[i].block_index >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
     }
 
     
@@ -274,8 +274,8 @@ int main(int argc, char ** argv) {
     file_count ++ ; //add root
     //sort
     qsort(filetable, file_count, sizeof(Index), cmp);
-    //calculate address
-    calculate_address();
+    //calculate block index
+    calculate_block();
     //write to output
     write_output(outfile);
     fwrite(&z, 1, 8, outfile);
