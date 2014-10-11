@@ -70,7 +70,7 @@ void ls_command(int n, char *argv[]){
     else if(n == 2)
         fail = fs_list(argv[1], buf);
     else
-        fio_printf(1, "input error\r\n");
+        fail = 1;
 
     //print
     if(!fail)

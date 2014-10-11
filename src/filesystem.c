@@ -67,7 +67,10 @@ int fs_list_mountpoint(const char * path, char * output){
 
     for(i = 0; i < MAX_FS; i++){
         if(fss[i].hash == hash){
-            fss[i].list(fss[i].opaque, path, output);
+            if(slash)
+                return fss[i].list(fss[i].opaque, slash+1, output);
+            else
+                return fss[i].list(fss[i].opaque, "/", output);
         }
     }
     return -1;
