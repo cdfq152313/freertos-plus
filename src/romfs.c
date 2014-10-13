@@ -23,6 +23,7 @@
 
 struct romfs_fds_t {
     const uint8_t * file;
+    uint32_t size;
     uint32_t cursor;
 };
 
@@ -34,11 +35,9 @@ static uint32_t get_unaligned(const uint8_t * d) {
 
 static ssize_t romfs_read(void * opaque, void * buf, size_t count) {
     struct romfs_fds_t * f = (struct romfs_fds_t *) opaque;
-    const uint8_t * size_p = f->file - 4;
-    uint32_t size = get_unaligned(size_p);
     
-    if ((f->cursor + count) > size)
-        count = size - f->cursor;
+    if ((f->cursor + count) > f->size)
+        count = f->size - f->cursor;
 
     memcpy(buf, f->file + f->cursor, count);
     f->cursor += count;
@@ -166,30 +165,28 @@ const uint8_t * romfs_get_address_by_path(const uint8_t * opaque, const char * p
 
 
 static int romfs_open(void * opaque, const char * path, int flags, int mode) {
-    uint32_t h = hash_djb2((const uint8_t *) path, 0, -1);
-    const uint8_t * romfs = (const uint8_t *) opaque;
-    const uint8_t * meta;
     const uint8_t * file;
     uint8_t is_directory;
     uint32_t datasize;
     int r = -1;
 
-    meta = romfs_get_index_by_hash(romfs, h, 0);
-    file = romfs_get_address_by_index(opaque, meta, &is_directory, &datasize);
-    
+    file = romfs_get_address_by_path(opaque, path, &is_directory, &datasize);
+
+    if(!file)
+        return -1;
     if(is_directory)
         return -1;
-    if (file) {
-        r = fio_open(romfs_read, NULL, romfs_seek, NULL, NULL);
-        if (r > 0) {
-            romfs_fds[r].file = file;
-            romfs_fds[r].cursor = 0;
-            fio_set_opaque(r, romfs_fds + r);
-        }
+
+    r = fio_open(romfs_read, NULL, romfs_seek, NULL, NULL);
+    if (r > 0) {
+        romfs_fds[r].file = file;
+        romfs_fds[r].cursor = 0;
+        romfs_fds[r].size = datasize;
+        fio_set_opaque(r, romfs_fds + r);
     }
-    
     return r;
 }
+
 void write_list_output(const uint8_t * romfs, uint32_t _max, char * output){
     
     const uint8_t * meta ; 
