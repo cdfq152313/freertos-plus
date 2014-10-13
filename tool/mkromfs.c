@@ -160,11 +160,11 @@ void write_output(FILE * outfile){
     FILE * infile;
     char buf[FILE_BLOCK_SIZE];
     
-    //file index count
-    b = (file_count >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
-    b = (file_count >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
-    b = (file_count >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
-    b = (file_count >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
+    //file index count (root doesn't have index)
+    b =( (file_count-1) >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
+    b =( (file_count-1) >> 8) & 0xff; fwrite(&b, 1, 1, outfile);
+    b =( (file_count-1) >> 16) & 0xff; fwrite(&b, 1, 1, outfile);
+    b =( (file_count-1) >> 24) & 0xff; fwrite(&b, 1, 1, outfile);
     
     //root size
     b = (filetable[0].size >> 0) & 0xff; fwrite(&b, 1, 1, outfile);
