@@ -117,6 +117,53 @@ const uint8_t * romfs_get_address_by_index(const uint8_t * opaque, const uint8_t
     return block2address(opaque, block, *is_directory);
 }
 
+const uint8_t * romfs_get_address_by_path(const uint8_t * opaque, const char * path, uint8_t * is_directory, uint32_t *  datasize){
+    const uint8_t * meta = (const uint8_t *) opaque;
+    const char * slash;
+    uint32_t hash = 0;
+
+    meta += 4;
+    * datasize = get_unaligned(meta);
+    * is_directory = TRUE ;
+    meta += 4;
+
+    //root
+    while(path[0] == '/')
+        path++;
+    if(path[0] == '\0')
+        return meta;
+
+    while(1){
+        //previous path isn't directory
+        if( !(*is_directory) )
+            return 0;
+
+        //get current hash value
+        slash = strchr(path, '/');
+        if(slash)
+            hash = hash_djb2( (const uint8_t *)path, hash, slash - path);
+        else
+            hash = hash_djb2( (const uint8_t *)path, hash, -1);
+ 
+        //get address
+        meta = romfs_get_index_by_hash(meta, hash, *datasize);
+        if(!meta)
+            return 0;
+        meta = romfs_get_address_by_index(opaque, meta, is_directory, datasize);
+
+        //go to next path
+        if(!slash)
+            break;
+        path = slash + 1;
+        while(path[0]== '/')
+            path++;
+        if(path[0] == '\0')
+            break;
+    }
+    return meta;
+}
+
+
 
 static int romfs_open(void * opaque, const char * path, int flags, int mode) {
     uint32_t h = hash_djb2((const uint8_t *) path, 0, -1);
@@ -162,53 +209,20 @@ void write_list_output(const uint8_t * romfs, uint32_t _max, char * output){
 }
 
 static int romfs_list(void * opaque, const char * path, char * output) {
-    const uint8_t * meta = (const uint8_t *) opaque;
-    const char * slash;
-    uint32_t hash = 0;
+    const uint8_t * meta; 
 
-    uint32_t file_in_directory_count;
+    uint32_t datasize;
     uint8_t  is_directory = TRUE;
 
-    meta += 4;
-    file_in_directory_count = get_unaligned(meta);
-    meta += 4;
 
-    //find directory
-    while(1){
-        // eliminate /
-        while(path[0] == '/')
-            path++;
-
-        //no next directory
-        if(path[0] == '\0')
-            break;
-
-        //get current directory
-        slash = strchr(path, '/');
-        if(slash)
-            hash = hash_djb2( (const uint8_t *)path, hash, slash - path);
-        else
-            hash = hash_djb2( (const uint8_t *)path, hash, -1);
-                
-        meta = romfs_get_index_by_hash(meta, hash, file_in_directory_count);
-        if(!meta)
-            return -1;
-
-        //get directory address
-        meta = romfs_get_address_by_index(opaque, meta, &is_directory, &file_in_directory_count);
-
-        if(!is_directory)
-            return -1;
-
-        //next while
-        if(slash)
-            path = slash + 1;
-        else
-            break;
-    }
+    meta = romfs_get_address_by_path(opaque, path, &is_directory, &datasize);
+    if(!meta)
+        return -1;
+    if(!is_directory)
+        return -1;
 
     //list the file name in directory
-    write_list_output(meta, file_in_directory_count, output);
+    write_list_output(meta, datasize, output);
     return 0;
 }
 
