@@ -118,8 +118,8 @@ void system_logger(void *pvParameters)
 
     handle = host_action(SYS_OPEN, "output/syslog", 4);
     if(handle == -1) {
-        fio_printf(1, "Open file error!\n");
-        return;
+        host_action(SYS_SYSTEM, "mkdir output");
+        handle = host_action(SYS_OPEN, "output/syslog", 4);
     }
 
     while(1) {
@@ -170,7 +170,7 @@ int main()
 	            (signed portCHAR *) "CLI",
 	            512 /* stack size */, NULL, tskIDLE_PRIORITY + 2, NULL);
 
-#if 0
+#if 1
 	/* Create a task to record system log. */
 	xTaskCreate(system_logger,
 	            (signed portCHAR *) "Logger",
