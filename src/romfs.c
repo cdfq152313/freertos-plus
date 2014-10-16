@@ -119,6 +119,8 @@ const uint8_t * romfs_get_address_by_index(const uint8_t * opaque, const uint8_t
 const uint8_t * romfs_get_address_by_path(const uint8_t * opaque, const char * path, uint8_t * is_directory, uint32_t *  datasize){
     const uint8_t * meta = (const uint8_t *) opaque;
     const char * slash;
+    const char * init_path;
+    uint32_t init_hash = 0;
     uint32_t hash = 0;
 
     meta += 4;
@@ -132,6 +134,8 @@ const uint8_t * romfs_get_address_by_path(const uint8_t * opaque, const char * p
     if(path[0] == '\0')
         return meta;
 
+    init_path = path;
+
     while(1){
         //previous path isn't directory
         if( !(*is_directory) )
@@ -139,10 +143,13 @@ const uint8_t * romfs_get_address_by_path(const uint8_t * opaque, const char * p
 
         //get current hash value
         slash = strchr(path, '/');
-        if(slash)
-            hash = hash_djb2( (const uint8_t *)path, hash, slash - path);
-        else
-            hash = hash_djb2( (const uint8_t *)path, hash, -1);
+        if(slash){
+            hash = hash_djb2( (const uint8_t *)path, init_hash, slash - path);
+            init_hash = hash_djb2( (const uint8_t *)init_path, 0, slash - init_path + 1);
+        }
+        else{
+            hash = hash_djb2( (const uint8_t *)path, init_hash, -1);
+        }
  
         //get address
         meta = romfs_get_index_by_hash(meta, hash, *datasize);
