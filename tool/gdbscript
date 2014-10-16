@@ -1,6 +1,14 @@
 file build/main.elf
 target remote :3333
 
-b main
-
+b main.c:97
 c
+
+#ls function
+set buf[0]='l'
+set buf[1]='s'
+set buf[2]='\0'
+
+jump +1
+c
+
